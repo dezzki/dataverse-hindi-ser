@@ -35,3 +35,5 @@ tta: false
 data_root: data/SRCASW-BhavVaani
 output_dir: runs
 oof_dir: oof
+aux_root: ext/my Dataset
+aux_csv: ext/aux_hindi.csv

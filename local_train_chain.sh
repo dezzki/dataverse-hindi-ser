@@ -5,7 +5,8 @@
 set -u
 cd "$(dirname "$0")"
 VENV=.venv/bin/python
-MODELS=(xlsr_local.yaml wavlm_local.yaml hubert_local.yaml)
+# order: faster non-aux models first, flagship aux-XLSR last
+MODELS=(wavlm_local.yaml hubert_local.yaml xlsr_local.yaml)
 
 echo "$(date) chain start; waiting for whisper-small to finish..."
 # wait until whisper run has all 5 folds OR its process has exited & folds done
