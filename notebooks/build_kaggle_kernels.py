@@ -34,25 +34,54 @@ OWNER = "dezzki"
 MODELS: Dict[str, Dict] = {
     "xlsr": {
         "config": "configs/xlsr.yaml",
-        "overrides": {"batch_size": 16, "grad_accum": 2, "grad_ckpt": False},
+        "overrides": {
+            "batch_size": 16, "grad_accum": 2, "grad_ckpt": False,
+            "freeze_encoder_layers": 12, "dropout": 0.4,
+            "label_smoothing": 0.1, "encoder_lr_scale": 0.05,
+        },
     },
     "wavlm": {
         "config": "configs/wavlm.yaml",
-        "overrides": {"batch_size": 16, "grad_accum": 2, "grad_ckpt": False},
+        "overrides": {
+            "batch_size": 16, "grad_accum": 2, "grad_ckpt": False,
+            "freeze_encoder_layers": 12, "dropout": 0.4,
+            "label_smoothing": 0.1, "encoder_lr_scale": 0.05,
+        },
     },
     "hubert": {
         "config": "configs/hubert.yaml",
-        "overrides": {"batch_size": 16, "grad_accum": 2, "grad_ckpt": False},
+        "overrides": {
+            "batch_size": 16, "grad_accum": 2, "grad_ckpt": False,
+            "freeze_encoder_layers": 12, "dropout": 0.4,
+            "label_smoothing": 0.1, "encoder_lr_scale": 0.05,
+        },
     },
-    "whisper_small": {
-        "config": "configs/whisper_small.yaml",
-        "overrides": {"batch_size": 20, "grad_accum": 2, "grad_ckpt": False},
+    # whisper_small retired from kernels: its weights aren't in the offline package.
+    # ---- external-data variants (competition + 1,600 Hindi clips) ----
+    "xlsr_aux": {
+        "config": "configs/xlsr.yaml",
+        "aux": True, "dataset_sources": ["vishlb/speech-emotion-recognition-hindi"],
+        "overrides": {
+            "batch_size": 16, "grad_accum": 4, "grad_ckpt": False,
+            "freeze_encoder_layers": 12, "dropout": 0.4,
+            "label_smoothing": 0.1, "encoder_lr_scale": 0.05,
+        },
+    },
+    "wavlm_aux": {
+        "config": "configs/wavlm.yaml",
+        "aux": True, "dataset_sources": ["vishlb/speech-emotion-recognition-hindi"],
+        "overrides": {
+            "batch_size": 16, "grad_accum": 4, "grad_ckpt": False,
+            "freeze_encoder_layers": 12, "dropout": 0.4,
+            "label_smoothing": 0.1, "encoder_lr_scale": 0.05,
+        },
     },
 }
 
 BOOTSTRAP = ""  # (removed)
 
 KERNEL_MAIN = r'''"""DataVerse SER trainer (Kaggle). Generated from build_kaggle_kernels.py."""
+import glob
 import os
 import pathlib
 import subprocess
@@ -64,28 +93,65 @@ sys.path.insert(0, K)
 
 PAYLOAD = __PAYLOAD__
 
-# 1. light dep refresh (best effort)
-subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q", "-U",
-     "transformers", "librosa", "soundfile", "safetensors", "accelerate"],
-    check=False,
-    env=dict(os.environ, PIP_DISABLE_PIP_VERSION_CHECK="1"),
-)
-
-# 2. materialise src/ + config
+# materialise src/ + config
 src_dir = pathlib.Path(K) / "src"
 src_dir.mkdir(exist_ok=True)
 for name, content in PAYLOAD["src"].items():
     (src_dir / name).write_text(content, encoding="utf-8")
 cfg_path = pathlib.Path(K) / PAYLOAD["config_name"]
-cfg_path.write_text(PAYLOAD["config_yaml"], encoding="utf-8")
+
+# Locate the competition train.csv ANYWHERE under the input mount (layout varies).
+INP_BASE = os.environ.get("DATAVERSE_INPUT_BASE", "/kaggle/input")
+hits = sorted(glob.glob(os.path.join(INP_BASE, "**", "train.csv"), recursive=True))
+if not hits:
+    print("INPUT LAYOUT (csv files):",
+          [p for p in glob.glob(INP_BASE + "/**/*.csv", recursive=True)][:20])
+    raise SystemExit(f"train.csv not found under {INP_BASE}")
+root = os.path.dirname(hits[0])
+cfg_text = PAYLOAD["config_yaml"].replace("data_root: __ROOT__", f"data_root: {root}")
+cfg_path.write_text(cfg_text, encoding="utf-8")
+
+# Aux (external) data: turn relative manifest paths into absolute ones.
+if PAYLOAD.get("aux") and PAYLOAD.get("aux_rows"):
+    auxbase = os.environ.get("DATAVERSE_AUX_BASE", "/kaggle/input")
+    first = PAYLOAD["aux_rows"][0]
+    probe = glob.glob(os.path.join(auxbase, "**", first["path"]), recursive=True)
+    if not probe:
+        print("AUX INPUT LAYOUT:", [p for p in glob.glob(auxbase + "/**/*.wav", recursive=True)][:12])
+        raise SystemExit("aux manifest path not found under " + auxbase)
+    aux_root = probe[0][: -len(first["path"])]
+    lines = ["filename,emotion,path"]
+    for r in PAYLOAD["aux_rows"]:
+        lines.append(",".join([r["filename"], r["emotion"], aux_root + r["path"]]))
+    with open(os.path.join(K, "aux_hindi.csv"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    print("AUX root =", aux_root, "| rows =", len(PAYLOAD["aux_rows"]))
+
+# Model weights for OFFLINE training: extract the mounted models-dataset tarball.
+import tarfile
+MODELS_ROOT = f"{K}/models"
+os.makedirs(MODELS_ROOT, exist_ok=True)
+_found_tar = False
+for _d in sorted(glob.glob(os.path.join(INP_BASE, "*"))):
+    _tars = sorted(glob.glob(os.path.join(_d, "*.tar")))
+    if _tars:
+        for _t in _tars:
+            print("extracting weights tar:", _t)
+            with tarfile.open(_t, "r") as _tf:
+                _tf.extractall(MODELS_ROOT)
+        _found_tar = True
+        break
+if not _found_tar:
+    print("WARN: no weights tarball found under", INP_BASE)
 
 env = dict(
     os.environ,
     PYTHONPATH=K,
-    HF_HOME=f"{K}/hf",
-    TRANSFORMERS_CACHE=f"{K}/hf",
-    HUGGINGFACE_HUB_CACHE=f"{K}/hf",
+    HF_HOME=MODELS_ROOT,
+    HF_HUB_CACHE=MODELS_ROOT,
+    TRANSFORMERS_CACHE=MODELS_ROOT,
+    HF_HUB_OFFLINE="1",
+    TRANSFORMERS_OFFLINE="1",
     TOKENIZERS_PARALLELISM="false",
 )
 
@@ -110,9 +176,9 @@ cmd(sys.executable, "-m", "src.predict", "--config", str(cfg_path),
 
 # 5. report
 print("=== KAGGLE RUN COMPLETE ===")
-for root, _, files in os.walk(K):
+for rootpath, _, files in os.walk(K):
     for f in files:
-        p = os.path.join(root, f)
+        p = os.path.join(rootpath, f)
         if os.path.getsize(p) > 0:
             print(p)
 '''
@@ -122,13 +188,24 @@ def build_payload(model: str, spec: Dict) -> Dict:
     import yaml
 
     cfg = yaml.safe_load((ROOT / spec["config"]).read_text())
-    cfg["data_root"] = INPUT_ROOT
+    cfg["data_root"] = "__ROOT__"  # resolved at runtime on Kaggle
     cfg["output_dir"] = f"{WORKING}/runs"
     cfg["oof_dir"] = f"{WORKING}/oof"
     cfg["num_workers"] = 2
     cfg["folds"] = [0, 1, 2, 3, 4]
     cfg.update(spec["overrides"])
     tag = str(cfg["model_name"]).rstrip("/").split("/")[-1]
+    aux = bool(spec.get("aux"))
+    aux_rows: List[Dict] = []
+    if aux:
+        tag = f"{tag}_aux"
+        cfg["aux_root"] = f"{WORKING}"
+        cfg["aux_csv"] = "aux_hindi.csv"
+        man = ROOT / "ext" / "aux_hindi.csv"
+        if man.exists():
+            import csv as _csv
+            with open(man, newline="", encoding="utf-8") as fh:
+                aux_rows = [dict(r) for r in _csv.DictReader(fh)]
     src: Dict[str, str] = {}
     for p in sorted((ROOT / "src").glob("*.py")):
         src[p.name] = p.read_text()
@@ -137,11 +214,13 @@ def build_payload(model: str, spec: Dict) -> Dict:
         "config_name": f"{model}.yaml",
         "config_yaml": yaml.safe_dump(cfg, sort_keys=False),
         "tag": tag,
+        "aux": aux,
+        "aux_rows": aux_rows,
     }
 
 
 def write_payload_literal(payload: Dict) -> str:
-    return json.dumps(payload, indent=2, default=str)
+    return repr(payload)  # Python literal (True/False/None), safe to inline
 
 
 def generate() -> None:
@@ -165,6 +244,10 @@ def generate() -> None:
             "enable_tpu": False,
             "competition_sources": [COMPETITION],
         }
+        ds = ["dezzki/dataverse-hf-models"]
+        if spec.get("dataset_sources"):
+            ds += [s for s in spec["dataset_sources"] if s not in ds]
+        meta["dataset_sources"] = ds
         (kernel_dir / "kernel-metadata.json").write_text(
             json.dumps(meta, indent=2) + "\n", encoding="utf-8"
         )

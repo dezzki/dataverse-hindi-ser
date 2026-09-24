@@ -306,6 +306,72 @@ def load_audio_for(
     )
 
 
+def load_aux_df(cfg: "ExperimentConfig") -> Optional[pd.DataFrame]:
+    """Load an optional external dataset (train-only rows for SER training).
+
+    Returns a DataFrame with the same columns as :func:`read_train_df`
+    (``Id, filename, emotion, path``) plus ``fold = -1`` so it is never used as
+    validation. Labels are lower-cased, optionally remapped via
+    ``cfg.aux_label_map``, and any label outside ``EMOTIONS`` is dropped with a
+    warning. Returns ``None`` when aux is not configured.
+    """
+    if not cfg.aux_csv or not cfg.aux_root:
+        return None
+    root = Path(cfg.aux_root)
+    csv_arg = Path(str(cfg.aux_csv))
+    if csv_arg.is_absolute() or csv_arg.is_file():
+        csv_path = csv_arg  # explicit/absolute manifest path
+    else:
+        csv_path = root / csv_arg.name  # bare filename -> inside aux_root
+    if not csv_path.exists():
+        LOG.warning("aux_csv not found: %s (aux disabled)", csv_path)
+        return None
+    df = pd.read_csv(csv_path)
+    if "filename" not in df.columns:
+        raise ValueError(f"{csv_path} must contain a 'filename' column, got {list(df.columns)}")
+
+    out = pd.DataFrame(
+        {
+            "Id": _id_column(df),
+            "filename": _normalise_filename(df["filename"]),
+            "emotion": df["emotion"].astype(str).str.strip().str.lower()
+            if "emotion" in df.columns
+            else "",
+        }
+    )
+    if cfg.aux_label_map:
+        out["emotion"] = out["emotion"].map(lambda e: cfg.aux_label_map.get(e, e))
+    bad = ~out["emotion"].isin(EMOTIONS)
+    if bad.any():
+        offenders = sorted(out.loc[bad, "emotion"].unique().tolist())
+        LOG.warning(
+            "aux: dropping %d/%d rows with labels outside %s (mapped seen: %s)",
+            int(bad.sum()), len(out), list(EMOTIONS), offenders,
+        )
+        out = out.loc[~bad].reset_index(drop=True)
+    if out.empty:
+        LOG.warning("aux csv %s produced no usable train rows; aux disabled", csv_path)
+        return None
+
+    out["fold"] = -1  # never treated as validation
+    if "path" in df.columns:
+        # honour explicit (possibly absolute) paths passed in the CSV
+        out["path"] = [
+            (str(p) if os.path.isabs(str(p)) else str((root / str(p)).resolve()))
+            if pd.notna(p) and str(p).strip() else None
+            for p in df["path"]
+        ]
+    else:
+        out["path"] = [resolve_audio_path(root, f, split="train", cfg=cfg) for f in out["filename"]]
+    missing = out["path"].isna()
+    if missing.any():
+        LOG.warning(
+            "%d aux audio files not found under %s (first: %s)",
+            int(missing.sum()), root, out.loc[missing, "filename"].head(3).tolist(),
+        )
+    return out.reset_index(drop=True)
+
+
 def split_summary(train_df: pd.DataFrame, test_df: Optional[pd.DataFrame] = None) -> str:
     """Human-readable class/split census (used in logs and reports)."""
     counts: Dict[str, int] = train_df["emotion"].value_counts().to_dict()

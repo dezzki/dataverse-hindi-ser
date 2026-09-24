@@ -34,12 +34,13 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import yaml
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .config import EMOTIONS, IDX_TO_EMOTION, ExperimentConfig, load_config, setup_logging
-from .data import read_train_df, split_summary
+from .data import load_aux_df, read_train_df, split_summary
 from .dataset import SERDataset, make_dataloader
 from .eval import macro_f1
 from .modeling import build_model, load_state_dict_flexible, prepare_inputs
@@ -433,6 +434,7 @@ def run_fold(
     fold: int,
     device: torch.device,
     out_root: str,
+    aux_df=None,
     max_train_batches: Optional[int] = None,
     max_val_batches: Optional[int] = None,
 ) -> Dict[str, float]:
@@ -442,6 +444,10 @@ def run_fold(
     set_seed(int(cfg.seed) + int(fold))
 
     train_part, val_part = fold_split(train_df, fold)
+    if aux_df is not None and len(aux_df) > 0:
+        # external rows (fold=-1) are added to TRAIN only; val/OOF untouched
+        train_part = pd.concat([train_part.reset_index(drop=True), aux_df.reset_index(drop=True)], ignore_index=True)
+        LOG.info("fold %d | train=%d (incl. %d aux) val=%d", fold, len(train_part), len(aux_df), len(val_part))
     train_ds = SERDataset(train_part, cfg.data_root, cfg, fold=fold, split="train", augment=True)
     val_ds = SERDataset(val_part, cfg.data_root, cfg, fold=fold, split="val", augment=False)
     train_loader = make_dataloader(train_ds, cfg, shuffle=True, drop_last=False)
@@ -712,6 +718,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     folds = args.folds if args.folds else list(cfg.folds)
     LOG.info("Training %s -> %s", cfg.model_name, out_root)
+
+    aux_df = load_aux_df(cfg)
+    if aux_df is not None:
+        LOG.info("Aux (external) training data: %d rows -> train splits only", len(aux_df))
+
     results = []
     for fold in folds:
         results.append(
@@ -721,6 +732,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 fold,
                 device,
                 out_root,
+                aux_df=aux_df,
                 max_train_batches=args.limit_train_batches,
                 max_val_batches=args.limit_val_batches,
             )

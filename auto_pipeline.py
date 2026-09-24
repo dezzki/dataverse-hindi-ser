@@ -34,11 +34,17 @@ KERNELS: Dict[str, str] = {
     "dezzki/dataverse-wavlm": "wavlm-large",
     "dezzki/dataverse-hubert": "hubert-large-ls960-ft",
     "dezzki/dataverse-whisper-small": "whisper-small",
+    "dezzki/dataverse-xlsr-aux": "wav2vec2-large-xlsr-53_aux",
+    "dezzki/dataverse-wavlm-aux": "wavlm-large_aux",
 }
-LOCAL_TAG = "wav2vec2-base-superb-er"
-LOCAL_RUN = f"{ROOT}/runs/{LOCAL_TAG}"
-PREDICT_CONFIG = "configs/base_superb.yaml"
-SEEDS = ["classic", LOCAL_TAG] + list(KERNELS.values())
+LOCAL_RUNS: Dict[str, str] = {
+    "wav2vec2-base-superb-er": "configs/base_superb.yaml",
+    "whisper-small": "configs/whisper_local.yaml",
+    "wav2vec2-large-xlsr-53": "configs/xlsr_local.yaml",
+    "wavlm-large": "configs/wavlm_local.yaml",
+    "hubert-large-ls960-ft": "configs/hubert_local.yaml",
+}
+SEEDS = ["classic"] + list(LOCAL_RUNS.keys()) + list(KERNELS.values())
 
 
 def log(msg: str) -> None:
@@ -89,10 +95,6 @@ def pull_kernel(slug: str, tag: str) -> bool:
             shutil.copy2(f, os.path.join(dst, name))
             moved = True
     return moved
-
-
-def local_superb_ready() -> bool:
-    return all(os.path.exists(f"{LOCAL_RUN}/fold{i}/best.pt") for i in range(5))
 
 
 def have_oof(tag: str) -> bool:
@@ -153,10 +155,12 @@ def once() -> None:
     st = read_state()
     ensure_classic_oof()
 
-    # 1) local superb -> predict when folds all done
-    if local_superb_ready() and not have_oof(LOCAL_TAG):
-        log("local superb folds complete -> running predict")
-        sh(f"{PY} -m src.predict --config {PREDICT_CONFIG} --ckpt {LOCAL_RUN} --folds 0 1 2 3 4", timeout=5400)
+    # 1) local runs (superb/whisper/xlsr/wavlm/hubert) -> predict when folds all done
+    for tag, cfgpath in LOCAL_RUNS.items():
+        run_dir = f"{ROOT}/runs/{tag}"
+        if all(os.path.exists(f"{run_dir}/fold{i}/best.pt") for i in range(5)) and not have_oof(tag):
+            log(f"{tag}: folds complete -> running predict")
+            sh(f"{PY} -m src.predict --config {cfgpath} --ckpt {run_dir} --folds 0 1 2 3 4", timeout=10800)
 
     # 2) pull finished Kaggle kernels
     for slug, tag in KERNELS.items():

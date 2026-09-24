@@ -150,6 +150,15 @@ class ExperimentConfig:
     #: persist OOF/test probabilities here (predict.py default)
     oof_dir: str = "oof"
 
+    # ----- auxiliary (external) data ------------------------------------- #
+    #: optional external CSV (same Id,filename,emotion format) added to the
+    #: TRAIN split only (validation/OOF stays on the competition split).
+    aux_csv: str = ""
+    #: directory (or Kaggle input root) containing ``aux_csv`` + audio.
+    aux_root: str = ""
+    #: optional label remap {external_label: one_of(angry,happy,neutral,sad)}.
+    aux_label_map: Dict[str, str] = field(default_factory=dict)
+
     # ----- augmentation / inference --------------------------------------- #
     aug: Dict[str, Any] = field(default_factory=_default_aug)
     #: number of random crops averaged at inference (used when ``tta`` is on)

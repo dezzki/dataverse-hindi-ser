@@ -28,5 +28,12 @@ submission*.csv
 *.pth
 *.log
 
+# ===== Local heavy / external-mirror dirs =====
+kaggle_models/
+kaggle_models_tar/
+ext/
+kaggle_dl/
+*.tar
+
 # ===== OS =====
 .DS_Store
