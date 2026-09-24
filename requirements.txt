@@ -1,0 +1,32 @@
+# DataVerse Hindi SER stack - uv-managed venv (python 3.12)
+# Core DL
+torch>=2.6
+torchaudio
+transformers>=4.44
+datasets
+accelerate
+safetensors
+huggingface_hub
+# Audio
+librosa>=0.10
+soundfile
+audioread
+audiomentations
+nnAudio
+opensmile
+# Data/ML
+numpy
+pandas
+scikit-learn
+scipy
+lightgbm
+xgboost
+joblib
+# Misc
+pyyaml
+tqdm
+matplotlib
+seaborn
+evaluate
+protobuf
+sentencepiece

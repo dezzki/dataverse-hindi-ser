@@ -1,0 +1,44 @@
+# Classical baseline: eGeMAPS (openSMILE) + MFCC statistics -> StandardScaler -> SVM.
+# No GPU, no fine-tuning: the sanity-check / ensemble-diversity entry.
+#
+#   python -m src.classic --config configs/classic.yaml
+#
+# Notes:
+#   * `model_name` is used here only to record the *classical* model choice.
+#   * `classic_models` lists what to fit; both write ensemble-ready CSVs.
+model_name: sklearn_svm
+classic_models: [sklearn_svm, lightgbm]
+
+features:
+  opensmile: true          # eGeMAPSv02 functionals (ComParE fallback)
+  mfcc: true               # 40 MFCCs x [mean, std, min, max]
+  cache: true              # cache feature matrices under output_dir/features/
+  mfcc_n: 40
+  n_fft: 1024
+  hop_length: 256
+
+classic:
+  svm_c: 2.0
+  svm_gamma: scale
+  svm_kernel: rbf
+  class_weight: balanced
+  lgbm_n_estimators: 400
+  lgbm_learning_rate: 0.05
+  lgbm_num_leaves: 31
+
+sample_rate: 16000
+max_seconds: 6.0
+trim_silence: true
+
+num_folds: 5
+folds: [0, 1, 2, 3, 4]
+seed: 42
+num_workers: 0
+
+aug: false                 # no waveform augmentation for the classical pipeline
+tta: false
+mixed_precision: none
+
+data_root: data/SRCASW-BhavVaani
+output_dir: runs
+oof_dir: oof

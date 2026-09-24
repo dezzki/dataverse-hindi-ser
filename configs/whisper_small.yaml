@@ -1,0 +1,48 @@
+# Whisper-small encoder fine-tune (decoder dropped by src.modeling).
+# Whisper's feature extractor pads to a fixed window; this pipeline shrinks it
+# to `max_seconds` so a 6 s clip costs 600 mel frames instead of 3000.
+model_name: openai/whisper-small
+pooling: meanstd
+freeze_encoder_layers: 0
+grad_ckpt: true
+
+sample_rate: 16000         # Whisper requires 16 kHz
+max_seconds: 6.0           # keep <= 10 s on a 6 GB GPU
+trim_silence: true
+trim_top_db: 40.0
+
+batch_size: 4              # 16 on Kaggle
+grad_accum: 8              # 4 on Kaggle
+lr: 1.0e-4
+head_lr: 1.0e-4
+encoder_lr_scale: 0.1
+layer_lr_decay: 0.95
+warmup_frac: 0.1
+epochs: 10
+early_stop_patience: 3
+grad_clip: 1.0
+weight_decay: 0.01
+
+mixed_precision: fp16
+scheduler: cosine
+label_smoothing: 0.05
+mixup_alpha: 0.2
+
+num_folds: 5
+folds: [0, 1, 2, 3, 4]
+seed: 42
+num_workers: 2
+
+aug:
+  speed: {enabled: true, prob: 0.5, min_rate: 0.9, max_rate: 1.1}
+  pitch: {enabled: true, prob: 0.5, min_steps: -2.0, max_steps: 2.0}
+  noise: {enabled: true, prob: 0.5, min_snr_db: 10.0, max_snr_db: 30.0}
+  specaug: {enabled: false}   # Whisper's mel front-end is not the wav2vec2 path
+  mixup: {prob: 1.0}
+
+tta: false
+tta_crops: 3
+
+data_root: data/SRCASW-BhavVaani
+output_dir: runs
+oof_dir: oof

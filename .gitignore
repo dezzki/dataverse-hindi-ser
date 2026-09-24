@@ -1,0 +1,32 @@
+# ===== User-mandated =====
+# Living log stays local (per user): not committed to the repo
+context.md
+
+# Environment / secrets files (never commit tokens, API keys, or .env)
+.env
+.env.*
+*.env
+configs/_kaggle.yaml
+configs/*.kaggle.yaml
+kernels_meta_local.json
+
+# ===== Python =====
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.egg-info/
+
+# ===== Competition data + artifacts =====
+data/
+runs/
+oof/
+kernels/
+submission*.csv
+*.pt
+*.npy
+*.pth
+*.log
+
+# ===== OS =====
+.DS_Store
