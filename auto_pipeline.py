@@ -70,8 +70,9 @@ def write_state(st: Dict) -> None:
 def kernel_status(slug: str) -> str:
     out = sh(f"kaggle kernels status {slug}")
     for tok in out.split('"'):
-        if "status" not in tok.lower() and ("RUNNING" in tok or "COMPLETE" in tok or "ERROR" in tok or "QUEUED" in tok or "PENDING" in tok or "CANCELLED" in tok):
-            return tok.replace("KernelWorkerStatus.", "").lower()
+        cand = tok.replace("KernelWorkerStatus.", "").strip().lower()
+        if cand in ("running", "queued", "pending", "complete", "completed", "error", "failed", "cancelled"):
+            return cand
     return out[:80].strip()
 
 
@@ -178,15 +179,17 @@ def once() -> None:
     log(f"available OOF sources: {available}")
     if available:
         sig = ";".join(sorted(available))
-        m = build_ensemble(available)
-        if sig != st.get("submitted", "") and m is not None:
-            label = submit_current(available)
-            if label:
-                st["submitted"] = sig
-                st["last_oof"] = m
-                write_state(st)
-                sh("git add -A && git commit -q -m 'auto: ensemble submit' || true", timeout=120)
-    # else: keep waiting (no complete sources yet)
+        if sig != st.get("submitted", ""):
+            m = build_ensemble(available)
+            if m is not None:
+                label = submit_current(available)
+                if label:
+                    st["submitted"] = sig
+                    st["last_oof"] = m
+                    write_state(st)
+                    sh("git add -A && git commit -q -m 'auto: ensemble submit' || true", timeout=120)
+        else:
+            log("no new OOF sources since last submit; skipping ensemble")
 
 
 def loop(interval: int = 300, once_only: bool = False) -> None:
