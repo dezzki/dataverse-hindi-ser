@@ -93,6 +93,9 @@ class ExperimentConfig:
 
     # ----- model / architecture ------------------------------------------- #
     model_name: str = "facebook/wav2vec2-large-xlsr-53"
+    #: optional local directory (e.g. HF snapshot) to load the backbone from,
+    #: bypassing the Hugging Face hub/cache (used on offline Kaggle kernels).
+    model_local_dir: str = ""
     #: pooling over the SSL time axis: ``meanstd`` | ``attention``
     pooling: str = "meanstd"
     #: freeze the first N transformer encoder layers (0 = train everything)

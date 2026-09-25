@@ -235,8 +235,10 @@ def _load_backbone(cfg: ExperimentConfig, family: str) -> Tuple[nn.Module, int, 
     """Load the pretrained backbone + feature extractor + hidden size."""
     from transformers import AutoConfig, AutoFeatureExtractor, AutoModel, AutoProcessor
 
-    name = cfg.model_name
-    hf_config = AutoConfig.from_pretrained(name)
+    local = bool(getattr(cfg, "model_local_dir", ""))
+    model_ref = cfg.model_local_dir or cfg.model_name
+    kw = {"local_files_only": True} if local else {}
+    hf_config = AutoConfig.from_pretrained(model_ref, **kw)
     model_type = getattr(hf_config, "model_type", "")
     hidden_size = int(
         getattr(hf_config, "hidden_size", None)
@@ -245,7 +247,7 @@ def _load_backbone(cfg: ExperimentConfig, family: str) -> Tuple[nn.Module, int, 
         or 768
     )
 
-    backbone = AutoModel.from_pretrained(name, ignore_mismatched_sizes=True)
+    backbone = AutoModel.from_pretrained(model_ref, ignore_mismatched_sizes=True, **kw)
     if hasattr(backbone, "config"):
         backbone.config.use_cache = False
 
@@ -254,22 +256,23 @@ def _load_backbone(cfg: ExperimentConfig, family: str) -> Tuple[nn.Module, int, 
     fe = None
     for factory in (AutoProcessor, AutoFeatureExtractor):
         try:
-            fe = factory.from_pretrained(name)
+            fe = factory.from_pretrained(model_ref, **kw)
             break
         except Exception as exc:  # pragma: no cover - depends on checkpoint
-            LOG.debug("%s could not load a processor for %s: %s", factory.__name__, name, exc)
+            LOG.debug("%s could not load a processor for %s: %s", factory.__name__, model_ref, exc)
     if fe is None:
-        raise RuntimeError(f"No feature extractor/processor found for {name!r}")
+        raise RuntimeError(f"No feature extractor/processor found for {model_ref!r}")
 
     if family == "whisper":
         fe = _configure_whisper_window(backbone, fe, cfg)
     LOG.info(
-        "Loaded %s (%s, hidden=%d, family=%s) via %s",
-        name,
+        "Loaded %s (%s, hidden=%d, family=%s) via %s (local=%s)",
+        model_ref,
         model_type or "unknown",
         hidden_size,
         family,
         type(backbone).__name__,
+        local,
     )
     return backbone, hidden_size, fe
 
@@ -373,7 +376,11 @@ def build_model(
     """
     from transformers import AutoConfig
 
-    hf_config = AutoConfig.from_pretrained(cfg.model_name)
+    local = bool(getattr(cfg, "model_local_dir", ""))
+    hf_config = AutoConfig.from_pretrained(
+        cfg.model_local_dir or cfg.model_name,
+        **({"local_files_only": True} if local else {}),
+    )
     family = cfg.model_family if cfg.model_family not in ("", "auto", None) else _infer_family(
         getattr(hf_config, "model_type", ""), cfg.model_name
     )

@@ -34,6 +34,7 @@ OWNER = "dezzki"
 MODELS: Dict[str, Dict] = {
     "xlsr": {
         "config": "configs/xlsr.yaml",
+        "weights_dataset": "dezzki/dataverse-hf-xlsr",
         "overrides": {
             "batch_size": 16, "grad_accum": 2, "grad_ckpt": False,
             "freeze_encoder_layers": 12, "dropout": 0.4,
@@ -42,6 +43,7 @@ MODELS: Dict[str, Dict] = {
     },
     "wavlm": {
         "config": "configs/wavlm.yaml",
+        "weights_dataset": "dezzki/dataverse-hf-wavlm",
         "overrides": {
             "batch_size": 16, "grad_accum": 2, "grad_ckpt": False,
             "freeze_encoder_layers": 12, "dropout": 0.4,
@@ -50,6 +52,7 @@ MODELS: Dict[str, Dict] = {
     },
     "hubert": {
         "config": "configs/hubert.yaml",
+        "weights_dataset": "dezzki/dataverse-hf-hubert2",
         "overrides": {
             "batch_size": 16, "grad_accum": 2, "grad_ckpt": False,
             "freeze_encoder_layers": 12, "dropout": 0.4,
@@ -60,7 +63,7 @@ MODELS: Dict[str, Dict] = {
     # ---- external-data variants (competition + 1,600 Hindi clips) ----
     "xlsr_aux": {
         "config": "configs/xlsr.yaml",
-        "aux": True, "dataset_sources": ["vishlb/speech-emotion-recognition-hindi"],
+        "aux": True, "weights_dataset": "dezzki/dataverse-hf-xlsr", "dataset_sources": ["vishlb/speech-emotion-recognition-hindi"],
         "overrides": {
             "batch_size": 16, "grad_accum": 4, "grad_ckpt": False,
             "freeze_encoder_layers": 12, "dropout": 0.4,
@@ -69,7 +72,7 @@ MODELS: Dict[str, Dict] = {
     },
     "wavlm_aux": {
         "config": "configs/wavlm.yaml",
-        "aux": True, "dataset_sources": ["vishlb/speech-emotion-recognition-hindi"],
+        "aux": True, "weights_dataset": "dezzki/dataverse-hf-wavlm", "dataset_sources": ["vishlb/speech-emotion-recognition-hindi"],
         "overrides": {
             "batch_size": 16, "grad_accum": 4, "grad_ckpt": False,
             "freeze_encoder_layers": 12, "dropout": 0.4,
@@ -109,7 +112,6 @@ if not hits:
     raise SystemExit(f"train.csv not found under {INP_BASE}")
 root = os.path.dirname(hits[0])
 cfg_text = PAYLOAD["config_yaml"].replace("data_root: __ROOT__", f"data_root: {root}")
-cfg_path.write_text(cfg_text, encoding="utf-8")
 
 # Aux (external) data: turn relative manifest paths into absolute ones.
 if PAYLOAD.get("aux") and PAYLOAD.get("aux_rows"):
@@ -132,17 +134,25 @@ import tarfile
 MODELS_ROOT = f"{K}/models"
 os.makedirs(MODELS_ROOT, exist_ok=True)
 _found_tar = False
-for _d in sorted(glob.glob(os.path.join(INP_BASE, "*"))):
-    _tars = sorted(glob.glob(os.path.join(_d, "*.tar")))
-    if _tars:
-        for _t in _tars:
-            print("extracting weights tar:", _t)
-            with tarfile.open(_t, "r") as _tf:
-                _tf.extractall(MODELS_ROOT)
-        _found_tar = True
-        break
+_found_tar = False
+_tars = sorted(glob.glob(os.path.join(INP_BASE, "**", "*.tar"), recursive=True))
+if _tars:
+    for _t in _tars:
+        print("extracting weights tar:", _t)
+        with tarfile.open(_t, "r") as _tf:
+            _tf.extractall(MODELS_ROOT)
+    _found_tar = True
 if not _found_tar:
     print("WARN: no weights tarball found under", INP_BASE)
+
+# Resolve the extracted snapshot dir and point model_local_dir at it.
+_snaps = sorted(glob.glob(f"{MODELS_ROOT}/models--*/snapshots/main"))
+if _snaps:
+    cfg_text = cfg_text.replace("model_local_dir: __MODEL_DIR__", f"model_local_dir: {_snaps[0]}")
+    print("MODEL local dir =", _snaps[0])
+else:
+    print("WARN: no extracted model snapshot found")
+cfg_path.write_text(cfg_text, encoding="utf-8")
 
 env = dict(
     os.environ,
@@ -189,6 +199,7 @@ def build_payload(model: str, spec: Dict) -> Dict:
 
     cfg = yaml.safe_load((ROOT / spec["config"]).read_text())
     cfg["data_root"] = "__ROOT__"  # resolved at runtime on Kaggle
+    cfg["model_local_dir"] = "__MODEL_DIR__"  # resolved after tar extraction
     cfg["output_dir"] = f"{WORKING}/runs"
     cfg["oof_dir"] = f"{WORKING}/oof"
     cfg["num_workers"] = 2
@@ -244,7 +255,7 @@ def generate() -> None:
             "enable_tpu": False,
             "competition_sources": [COMPETITION],
         }
-        ds = ["dezzki/dataverse-hf-models"]
+        ds = ([spec["weights_dataset"]] if spec.get("weights_dataset") else [])
         if spec.get("dataset_sources"):
             ds += [s for s in spec["dataset_sources"] if s not in ds]
         meta["dataset_sources"] = ds
