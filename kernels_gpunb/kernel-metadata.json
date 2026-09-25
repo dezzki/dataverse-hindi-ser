@@ -1,0 +1,11 @@
+{
+  "id": "dezzki/dataverse-gpu-nb",
+  "title": "dataverse-gpu-nb",
+  "code_file": "probe.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": false,
+  "enable_tpu": false
+}
