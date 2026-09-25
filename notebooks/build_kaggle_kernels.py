@@ -79,6 +79,15 @@ MODELS: Dict[str, Dict] = {
             "label_smoothing": 0.1, "encoder_lr_scale": 0.05,
         },
     },
+    "hubert_aux": {
+        "config": "configs/hubert.yaml",
+        "aux": True, "weights_dataset": "dezzki/dataverse-hf-hubert2", "dataset_sources": ["vishlb/speech-emotion-recognition-hindi"],
+        "overrides": {
+            "batch_size": 16, "grad_accum": 4, "grad_ckpt": False,
+            "freeze_encoder_layers": 12, "dropout": 0.4,
+            "label_smoothing": 0.1, "encoder_lr_scale": 0.05,
+        },
+    },
 }
 
 BOOTSTRAP = ""  # (removed)
