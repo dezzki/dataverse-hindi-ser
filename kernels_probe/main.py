@@ -1,12 +1,11 @@
 import os, glob
-print("=== /kaggle/input tree ===")
-for root, dirs, files in os.walk("/kaggle/input"):
-    depth = root.count(os.sep) - 2
-    if depth <= 2:
-        print("  "*depth + root + "/")
-        for f in files[:6]:
-            print("  "*(depth+1) + f)
-print("=== all tars ===")
-print(glob.glob("/kaggle/input/**/*.tar", recursive=True))
-print("=== all train.csv ===")
-print(glob.glob("/kaggle/input/**/train.csv", recursive=True)[:5])
+print("=== recursive all files under /kaggle/input ===")
+for p in glob.glob("/kaggle/input/**/*", recursive=True):
+    if os.path.isfile(p):
+        print("FILE", os.path.getsize(p), p)
+print("=== datasets dirs ===")
+for d in glob.glob("/kaggle/input/datasets/**", recursive=True):
+    print("DIR", d)
+print("=== competitions dirs ===")
+for d in glob.glob("/kaggle/input/competitions/**", recursive=True)[:10]:
+    print("DIR", d)

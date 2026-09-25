@@ -129,37 +129,24 @@ if PAYLOAD.get("aux") and PAYLOAD.get("aux_rows"):
         fh.write("\n".join(lines) + "\n")
     print("AUX root =", aux_root, "| rows =", len(PAYLOAD["aux_rows"]))
 
-# Model weights for OFFLINE training: extract the mounted models-dataset tarball.
-import tarfile
-MODELS_ROOT = f"{K}/models"
-os.makedirs(MODELS_ROOT, exist_ok=True)
-_found_tar = False
-_found_tar = False
-_tars = sorted(glob.glob(os.path.join(INP_BASE, "**", "*.tar"), recursive=True))
-if _tars:
-    for _t in _tars:
-        print("extracting weights tar:", _t)
-        with tarfile.open(_t, "r") as _tf:
-            _tf.extractall(MODELS_ROOT)
-    _found_tar = True
-if not _found_tar:
-    print("WARN: no weights tarball found under", INP_BASE)
-
-# Resolve the extracted snapshot dir and point model_local_dir at it.
-_snaps = sorted(glob.glob(f"{MODELS_ROOT}/models--*/snapshots/main"))
+# Model weights: Kaggle pre-extracts uploaded archives under
+# /kaggle/input/datasets/<owner>/<slug>/<file>/models--<repo>/snapshots/main
+MODELS_ROOT_DIR = ""
+_snaps = sorted(glob.glob(os.path.join(INP_BASE, "**", "models--*", "snapshots", "main"), recursive=True))
 if _snaps:
+    MODELS_ROOT_DIR = _snaps[0]
     cfg_text = cfg_text.replace("model_local_dir: __MODEL_DIR__", f"model_local_dir: {_snaps[0]}")
     print("MODEL local dir =", _snaps[0])
 else:
-    print("WARN: no extracted model snapshot found")
+    print("WARN: no extracted model snapshot found under", INP_BASE)
 cfg_path.write_text(cfg_text, encoding="utf-8")
 
 env = dict(
     os.environ,
     PYTHONPATH=K,
-    HF_HOME=MODELS_ROOT,
-    HF_HUB_CACHE=MODELS_ROOT,
-    TRANSFORMERS_CACHE=MODELS_ROOT,
+    HF_HOME=f"{K}/hf",
+    HF_HUB_CACHE=f"{K}/hf",
+    TRANSFORMERS_CACHE=f"{K}/hf",
     HF_HUB_OFFLINE="1",
     TRANSFORMERS_OFFLINE="1",
     TOKENIZERS_PARALLELISM="false",
