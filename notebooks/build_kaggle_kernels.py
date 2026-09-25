@@ -171,6 +171,13 @@ cmd(sys.executable, "-m", "src.train_ssl", "--config", str(cfg_path),
 cmd(sys.executable, "-m", "src.predict", "--config", str(cfg_path),
     "--ckpt", f"{K}/runs/{tag}", "--folds", "0", "1", "2", "3", "4")
 
+# Delete bulky checkpoints — ensemble only needs the small OOF/test-prob CSVs.
+import shutil
+_run_dir = f"{K}/runs/{tag}"
+if os.path.isdir(_run_dir):
+    shutil.rmtree(_run_dir, ignore_errors=True)
+    print("removed checkpoints (keeping OOF + test probs)")
+
 # 5. report
 print("=== KAGGLE RUN COMPLETE ===")
 for rootpath, _, files in os.walk(K):
