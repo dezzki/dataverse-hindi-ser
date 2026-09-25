@@ -33,9 +33,9 @@ KERNELS: Dict[str, str] = {
     "dezzki/dataverse-xlsr": "wav2vec2-large-xlsr-53",
     "dezzki/dataverse-wavlm": "wavlm-large",
     "dezzki/dataverse-hubert": "hubert-large-ls960-ft",
-    "dezzki/dataverse-whisper-small": "whisper-small",
     "dezzki/dataverse-xlsr-aux": "wav2vec2-large-xlsr-53_aux",
     "dezzki/dataverse-wavlm-aux": "wavlm-large_aux",
+    # whisper-small kernel retired (weights not in offline package) — local only
 }
 LOCAL_RUNS: Dict[str, str] = {
     "wav2vec2-base-superb-er": "configs/base_superb.yaml",
